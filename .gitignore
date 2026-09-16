@@ -1,0 +1,22 @@
+# Python environment
+venv/
+__pycache__/
+*.pyc
+
+# Private student data - never commit this
+dataset/
+attendance/
+labels.json
+trainer.yml
+
+# Downloadable file, not project-specific - see README for download link
+haarcascade_frontalface_default.xml
+
+# Test/debug images created during setup
+*.jpg
+*.jpeg
+test*.jpg
+
+# Editor/OS junk
+.vscode/
+.DS_Store
