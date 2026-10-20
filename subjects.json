@@ -1,0 +1,64 @@
+{
+  "IT-7-AI-AND-DS-II": {
+    "name": "AI and DS - II",
+    "branch": "IT",
+    "semester": "7",
+    "code": "ITC701"
+  },
+  "IT-7-INTERNET-OF-EVERYTHING": {
+    "name": "Internet of Everything",
+    "branch": "IT",
+    "semester": "7",
+    "code": "ITC702"
+  },
+  "IT-7-SOFTWARE-TESTING-AND-QA": {
+    "name": "Software Testing and QA",
+    "branch": "IT",
+    "semester": "7",
+    "code": "ITDO7014"
+  },
+  "IT-7-INFORMATION-RETRIEVAL-SYSTEM": {
+    "name": "Information Retrieval System",
+    "branch": "IT",
+    "semester": "7",
+    "code": "IRS"
+  },
+  "IT-7-CYBER-SECURITY-AND-LAWS": {
+    "name": "Cyber Security and Laws",
+    "branch": "IT",
+    "semester": "7",
+    "code": "CSL",
+    "elective": true
+  },
+  "IT-7-DISASTER-MANAGEMENT-AND-MITIGATION-MEASURES": {
+    "name": "Disaster Management and Mitigation Measures",
+    "branch": "IT",
+    "semester": "7",
+    "code": "DMMM",
+    "elective": true
+  },
+  "IT-7-DATA-SCIENCE-LAB": {
+    "name": "Data Science Lab",
+    "branch": "IT",
+    "semester": "7",
+    "code": "ITL701"
+  },
+  "IT-7-IOE-LAB": {
+    "name": "IoE Lab",
+    "branch": "IT",
+    "semester": "7",
+    "code": "ITL702"
+  },
+  "IT-7-SECURE-APPLICATION-DEVELOPMENT-LAB": {
+    "name": "Secure Application Development Lab",
+    "branch": "IT",
+    "semester": "7",
+    "code": "ITL703"
+  },
+  "IT-7-RECENT-OPEN-SOURCE-PROJECT-LAB": {
+    "name": "Recent Open Source Project Lab",
+    "branch": "IT",
+    "semester": "7",
+    "code": "ITL704"
+  }
+}

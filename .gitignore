@@ -3,6 +3,9 @@ venv/
 __pycache__/
 *.pyc
 
+# Real credentials - never commit this (use .env.example as the template)
+.env
+
 # Private student data - never commit this
 dataset/
 attendance/

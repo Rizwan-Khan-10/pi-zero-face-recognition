@@ -1,2 +1,7 @@
 opencv-contrib-python
+numpy
 pillow
+ttkbootstrap
+openpyxl
+python-dotenv
+matplotlib

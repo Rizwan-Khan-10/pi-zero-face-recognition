@@ -13,17 +13,68 @@ The Raspberry Pi Zero W does **no image processing at all**. It just streams the
 ## Repo structure
 
 ```
-pi_stream_server.py   # Runs on the Pi - streams webcam over WiFi
-app.py                # Runs on the laptop - GUI (register, attendance, report)
-requirements.txt      # Laptop-side Python dependencies
-.gitignore
+pi_stream_server.py     # Runs on the Pi - streams webcam over WiFi
+app.py                  # Runs on the laptop - starts the GUI
+config.py               # All settings (stream URL, branches, default semester, minimum attendance %, e-mail ...)
+generate_dummy_data.py  # Real + dummy demo data for the presentation (IT, Sem 7)
+core/                   # camera, recognition (LBPH), storage (json/csv), reporting maths, e-mail
+ui/                     # GUI screens: home, add student, attendance, manage students/branches/subjects, report
+requirements.txt        # Laptop-side Python dependencies
+.env / .env.example     # E-mail sender + app password (optional)
 README.md
 ```
 
-Not included in the repo (see setup steps below for how each is created):
-- `haarcascade_frontalface_default.xml` — public OpenCV file, download separately
-- `dataset/`, `labels.json`, `trainer.yml` — generated when you register students
-- `attendance/` — generated when you take attendance
+Also in the folder (generated / local data):
+- `haarcascade_frontalface_default.xml` — public OpenCV file (download link in Part 3)
+- `dataset/`, `labels.json`, `trainer.yml` — face samples, student list and trained model
+- `branches.json`, `subjects.json`, `attendance/` — branches, subjects and the per-day attendance CSVs
+
+---
+
+## What's new in this version
+
+- **Only the IT branch** is set up, with **Semester 7 pre-selected** on every screen (`DEFAULT_BRANCHES` / `DEFAULT_SEMESTER` in `config.py`).
+- **Subjects are the University of Mumbai B.E. IT Semester VII (Rev-2019 'C' scheme)** courses: AI and DS - II (ITC701), Internet of Everything (ITC702), Software Testing and QA (ITDO7014, Dept. Optional-3), Information Retrieval System (IRS, Dept. Optional-4), the two Institute Optional-1 courses **Cyber Security and Laws (CSL)** and **Disaster Management and Mitigation Measures (DMMM)**, and the four labs ITL701-ITL704. Software Testing and QA is one common pick for Dept. Optional-3 — rename it in **Manage Subjects** if your batch has a different one.
+- **CSL / DMMM are electives**: each student attends only one of them. Pick it in **Add Student** (Elective box) or **Manage Students -> Edit**; the table there has an *Elective* column. Attendance, Finalize Day and all reports then count only the students of that subject (a DMMM student scanned during a CSL lecture is shown as "not in this subject" and not marked). A subject becomes an elective by having `"elective": true` in `subjects.json`.
+- **Real + dummy students run together** (see "Presentation / demo mode" below).
+- **New Attendance Report** with a live *Minimum attendance %* box (see "Attendance report" below).
+
+---
+
+## Attendance report
+
+Open **View Report**. The top bar has Branch / Semester / Subject (default: IT, Sem 7, All Subjects) and, on the right, the **Minimum attendance %** box.
+
+- The box starts at `ATTENDANCE_ELIGIBILITY_THRESHOLD` from `config.py` (**75**). Type any number from 0 to 100 (or use the arrows) and every tab re-colours itself live. **Reset** puts it back to the value in `config.py`. Invalid text is ignored and the last valid value stays. The change lasts until the app is closed; to change the default permanently edit `config.py`.
+- A student **below the minimum is shown in red** (and with a `▼` next to that subject's %). Students with no records yet show "No data" and are not counted as short.
+- **Semester Summary** (first tab) — the whole semester at a glance, no button to press:
+  - *Period* = every day on which attendance was taken. Change **From / To** to look at a smaller range, **Full semester** resets it.
+  - Four cards: Students, Meeting the minimum, Below the minimum, Class average.
+  - Two charts: students above vs. below the minimum, and the class average per subject (or, for a single subject, how many students fall in each % band).
+  - Student table: one **% column per subject** (ITC701 ... IRS, CSL, DMMM ... ITL704; an elective the student does not take shows `-`), then *Attended* (present/total lectures), *Overall %* and *Status* (OK / LOW). Click a heading to sort. Tick **Show only students below minimum** to get a defaulters list.
+- **Daily** — Present/Absent for one date. **Weekly** (pick a week by its dates, e.g. "12 Oct - 18 Oct 2026", Monday to Sunday) / **Monthly** (e.g. "October 2026") — chart plus per-student % with the same red highlighting.
+- **Export to Excel** on every tab; students below the minimum are filled red in the sheet.
+
+---
+
+## Presentation / demo mode (real + dummy students together)
+
+`generate_dummy_data.py` builds a demo class so the report looks like a real class while the camera still works on the real students:
+
+```
+python generate_dummy_data.py            # full reset
+python generate_dummy_data.py --today    # add TODAY's attendance for the dummy students
+python generate_dummy_data.py --no-real-history
+```
+
+- **Real students** = everyone who has a face folder in `dataset/<roll>_<Name>/` (currently 231413 Abdullah Ghawte, 231422 Izhar Khan, 231425 Rizwan Khan). They are kept in IT / Sem 7 and the face model is retrained, so the camera recognises them.
+- **Electives**: the real students are split over CSL / DMMM as 231413 CSL, 231422 DMMM, 231425 CSL (change it in Manage Students). The dummy students are split roughly 55% CSL / 45% DMMM.
+- **Dummy students** (40, roll numbers 231401 onwards) have no face data — they only appear in lists and reports. Their e-mails use the reserved `@demo.invalid` domain, so lecture e-mails can never reach a real inbox.
+- About 90 days of seeded attendance history is written (timetable based; Sundays and a few random holidays skipped). A few dummy students are clearly below 75% and a few sit just around it, so changing the minimum live in the report visibly moves people between green and red. **Today is left empty.**
+- The real students also get seeded history (high attendance) so they show up next to the dummies. This is demo data only — use `--no-real-history` to leave them without any.
+- **Suggested flow on presentation day:** run `python generate_dummy_data.py` once (moves the history up to yesterday), then `python generate_dummy_data.py --today`, open **Start Attendance** and let the camera mark the real students live, press **Finalize Day**, then open **View Report**.
+- Running the full reset again wipes `attendance/` and rebuilds the student list from `dataset/`. Students added with **Add Student** are treated as real as long as their face folder exists.
+- Without `--today`, **Finalize Day** marks every dummy student Absent (they cannot be scanned) — that is expected.
 
 ---
 
@@ -134,11 +185,7 @@ If it still disconnects, use a **powered USB hub** (one with its own separate po
 4. Download the face detector file and place it in the project's root folder (same folder as `app.py`):
    [haarcascade_frontalface_default.xml](https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml)
    (Save As, keep the exact filename.)
-5. Open `app.py` and `pi_stream_server.py`'s companion — check the `STREAM_URL` constant near the top of `app.py`:
-   ```python
-   STREAM_URL = "http://attendance-pi.local:5000/video_feed"
-   ```
-   Update the hostname if you used a different one when flashing the Pi.
+5. Set the stream address. Either put `STREAM_URL=http://attendance-pi.local:5000/video_feed` in `.env`, or change the default in `config.py` (use `0` to test with the laptop's own webcam). Update the hostname if you used a different one when flashing the Pi.
 6. Make sure `pi_stream_server.py` is running on the Pi first, then run:
    ```
    python app.py
@@ -148,14 +195,15 @@ If it still disconnects, use a **powered USB hub** (one with its own separate po
 
 ## Usage
 
-- **Add Student** — enter name and roll number, click "Start Capturing." The camera feed opens automatically, captures 25 face samples, trains the model, and closes automatically. No manual photo-taking needed.
-- **Start Attendance** — click "Start." Recognized faces are boxed in green with their name and marked "Present" once per day automatically. Unrecognized faces show a red box labeled "Unknown."
-- **Finalize Day (Mark Absentees)** — on the Attendance screen. Marks every registered student who wasn't scanned that day as "Absent" in the day's record. Confirm before using — this is meant to be done once, at the end of the attendance window.
-- **View Report** — pick a date from the dropdown to see a table of everyone's status for that day.
+- **Add Student** — enter name, roll number, branch (IT) and semester (7 is pre-selected), click "Start Capturing." The camera captures 25 face samples, trains the model, and closes automatically.
+- **Start Attendance** — pick branch / semester / subject, click "Start." Recognized faces are boxed in green with their name and marked "Present" once per day per subject. Unrecognized faces show a red box labeled "Unknown."
+- **Finalize Day (Mark Absentees)** — on the Attendance screen. Marks every registered student of that branch + semester who wasn't scanned as "Absent". Do it once, at the end of the lecture.
+- **Manage Students / Branches / Subjects** — edit or remove students, add branches, add or remove subjects.
+- **View Report** — see "Attendance report" above.
 
 ## Data & privacy note
 
-`dataset/`, `labels.json`, `trainer.yml`, and `attendance/` are gitignored on purpose — they contain student face images and personal attendance records. Each deployment generates its own fresh copies; nothing here should be committed or shared publicly.
+`dataset/`, `labels.json`, `trainer.yml`, and `attendance/` contain student face images and personal attendance records — don't publish them. The dummy data is fake, but the real students' face samples in `dataset/` are not. Also check `.env`: it holds the sender e-mail's app password, so remove it before sharing the project folder.
 
 ## Troubleshooting quick reference
 
@@ -167,3 +215,6 @@ If it still disconnects, use a **powered USB hub** (one with its own separate po
 | `Cannot open device /dev/video0` in OpenCV | Camera not detected, or permissions | Check `lsusb`; add user to `video` group: `sudo usermod -a -G video <username>`, then log out/in |
 | `Failed building wheel for dlib` | Not applicable here — this project deliberately avoids `dlib`/`face_recognition` | Use `requirements.txt` as-is (OpenCV LBPH) |
 | Pi not visible on network | Wrong WiFi band (5GHz) or wrong SSID/password | Reflash with correct 2.4GHz network details |
+| Real student not recognised after running `generate_dummy_data.py` | Model not retrained (OpenCV contrib missing at that moment) | Install `opencv-contrib-python`, run the script again |
+| Report shows no students / no data | Wrong branch + semester picked, or `attendance/` is empty | Pick IT / 7, or run `generate_dummy_data.py` |
+| Everything is red (or nothing is) in the report | Minimum attendance box is set very high / low | Press **Reset** next to the box (back to 75) |
