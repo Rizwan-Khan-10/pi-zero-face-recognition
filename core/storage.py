@@ -30,6 +30,13 @@ def save_labels(labels):
         json.dump(labels, f, indent=2)
 
 
+def is_demo(info):
+    """True for demo (dummy) students: flagged "demo": true in labels.json, or holding an e-mail on a
+    reserved ".invalid" address. They have no face data and must never be e-mailed."""
+    email = str(info.get("email", "")).strip().lower()
+    return bool(info.get("demo")) or email.endswith(".invalid")
+
+
 def next_label_id(labels):
     return max([v["label_id"] for v in labels.values()], default=-1) + 1
 

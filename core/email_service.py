@@ -23,6 +23,8 @@ def send_email(to_email, subject, body):
     """Returns (ok, error_message)."""
     if not to_email:
         return False, "This student has no email on file (add one in Manage Students)"
+    if to_email.strip().lower().endswith(".invalid"):   # demo students - never leaves the laptop
+        return False, "Demo address - not sent"
     if not config.SENDER_EMAIL or not config.SENDER_APP_PASSWORD:
         return False, "SENDER_EMAIL / SENDER_APP_PASSWORD not set in .env"
     try:
@@ -45,13 +47,21 @@ def send_email(to_email, subject, body):
 
 
 def send_lecture_emails(date_str, subject_id):
-    """Emails every student recorded for this subject+date their status. Returns (sent_count, [failures])."""
+    """
+    Emails every REAL student recorded for this subject+date their status.
+    Demo (dummy) students are skipped - they are fake and must never get mail.
+    Returns (sent_count, [failures], skipped_demo_count).
+    """
     labels = storage.load_labels()
     rows = storage.read_subject_rows(date_str, subject_id)
     subject_name = storage.load_subjects().get(subject_id, {}).get("name", subject_id)
-    sent, failures = 0, []
+    sent, skipped, failures = 0, 0, []
     for roll_no, name, time_str, status in rows:
-        email = labels.get(roll_no, {}).get("email", "")
+        info = labels.get(roll_no, {})
+        if storage.is_demo(info):
+            skipped += 1
+            continue
+        email = info.get("email", "")
         subject_line = f"Attendance - {subject_name} - {date_str}"
         body = (
             f"Dear {name},\n\n"
@@ -64,4 +74,4 @@ def send_lecture_emails(date_str, subject_id):
             sent += 1
         else:
             failures.append(f"{name} ({roll_no}): {err}")
-    return sent, failures
+    return sent, failures, skipped

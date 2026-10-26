@@ -27,8 +27,14 @@ CASCADE_FILE = os.path.join(BASE_DIR, "haarcascade_frontalface_default.xml")
 # ---------------- app settings ----------------
 SAMPLES_PER_STUDENT = 25
 CAPTURE_INTERVAL = 0.2          # seconds between two saved samples
-CONFIDENCE_THRESHOLD = 65
+CONFIDENCE_THRESHOLD = 65       # LBPH distance - lower is a better match
+MATCH_MARGIN = 10               # best match must beat the 2nd-best person by this much, else "Unknown"
+STABLE_FRAMES = 3               # same student must be matched in this many frames in a row before marking Present
+MIN_SHARPNESS = 40              # registration skips blurrier face crops than this
+SHOW_CONFIDENCE = os.getenv("SHOW_CONFIDENCE", "true").strip().lower() in ("true", "1", "yes")
 COLLEGE_EMAIL_DOMAIN = "mhssce.ac.in"
+DEMO_EMAIL_DOMAIN = "demo.invalid"   # e-mail domain of the demo (dummy) students. ".invalid" is reserved by the
+                                     # internet standards (RFC 2606) and can never exist, so mail to it can never be delivered.
 VIDEO_W, VIDEO_H = 480, 360
 SEMESTERS = [str(i) for i in range(1, 9)]   # every branch always has semesters 1-8
 DEFAULT_SEMESTER = "7"                      # pre-selected everywhere (Attendance, Report, Subjects ...)

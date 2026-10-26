@@ -12,7 +12,7 @@ import cv2
 import config
 from core import storage
 from core.camera import CameraStream, camera_message
-from core.recognition import face_cascade, train_model
+from core.recognition import face_cascade, train_model, is_sharp_enough
 from core.email_service import suggest_email
 from ui.widgets import make_header, VideoPanel
 
@@ -200,11 +200,14 @@ class AddStudentScreen(tb.Frame):
                 elif self.count < config.SAMPLES_PER_STUDENT and time.time() - self.last_capture >= config.CAPTURE_INTERVAL:
                     x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
                     face_img = cv2.resize(gray[y:y + h, x:x + w], (200, 200))
-                    self.count += 1
-                    self.last_capture = time.time()
-                    cv2.imwrite(os.path.join(self.folder, f"{self.count}.jpg"), face_img)
-                    self.progress["value"] = self.count
-                    self.status_label.config(text=f"Capturing {self.count}/{config.SAMPLES_PER_STUDENT}...")
+                    if not is_sharp_enough(face_img):
+                        self.status_label.config(text="Image blurry - hold still, keep the face in focus")
+                    else:
+                        self.count += 1
+                        self.last_capture = time.time()
+                        cv2.imwrite(os.path.join(self.folder, f"{self.count}.jpg"), face_img)
+                        self.progress["value"] = self.count
+                        self.status_label.config(text=f"Capturing {self.count}/{config.SAMPLES_PER_STUDENT}...")
 
             self.video.show_frame(display)
             if self.capturing and self.count >= config.SAMPLES_PER_STUDENT:

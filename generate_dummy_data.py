@@ -1,8 +1,8 @@
 """
-Demo data for the presentation: REAL students + DUMMY students side by side.
+Demo data for the presentation: REAL students + DUMMY (demo) students side by side.
 
-    python generate_dummy_data.py            full reset (see below)
-    python generate_dummy_data.py --today    only add TODAY's attendance for the dummy students
+    python generate_dummy_data.py            full reset (asks before wiping existing attendance)
+    python generate_dummy_data.py --yes      full reset without asking
     python generate_dummy_data.py --no-real-history
                                              full reset, but real students get no seeded history
 
@@ -10,14 +10,19 @@ What the full reset does
 ------------------------
 * Keeps every REAL student - anyone who has a face folder in dataset/<roll>_<Name>/ -
   and puts them in IT / Sem 7 together with ~40 dummy students (no face data).
-* Only the IT branch and its Mumbai University Sem 7 subjects (Rev-2019 'C' scheme) exist.
+* EVERY student (real and dummy) is IT / Sem 7. Only the IT branch and its Mumbai University
+  Sem 7 subjects (Rev-2019 'C' scheme) exist.
+* Electives: the real students are all in CSL; the dummy students are split between CSL and DMMM.
 * Wipes all old attendance and writes ~90 days of seeded history for Sem 7 (timetable based,
   Sundays + a few random holidays skipped). Today is left empty so the live camera
   demo marks real students on a clean day.
 * Retrains the face model so the label ids match labels.json.
 
-Dummy students use the reserved ".invalid" e-mail domain, so lecture e-mails can never reach a real inbox.
-Re-run before the presentation to move the seeded dates up to "yesterday".
+Dummy students are flagged "demo": true in labels.json and use the reserved ".invalid" e-mail
+domain, so lecture e-mails are never sent to them (the e-mail code skips them as well).
+
+When you take REAL attendance later (any subject) and press Finalize, every student who was not
+scanned - i.e. all the dummy students - is marked Absent automatically. Nothing else to run.
 """
 
 import argparse
@@ -38,7 +43,7 @@ random.seed(42)
 NUM_DUMMY = 40
 DAYS_OF_HISTORY = 90
 HOLIDAY_CHANCE = 0.08          # random no-lecture days (besides Sundays)
-DUMMY_EMAIL_DOMAIN = "demo.invalid"
+DUMMY_EMAIL_DOMAIN = config.DEMO_EMAIL_DOMAIN   # reserved ".invalid" - can never receive mail
 
 # Seeded history for the REAL students too, so the report shows them next to the dummies.
 # Their rates are kept high on purpose; use --no-real-history to skip it.
@@ -62,10 +67,10 @@ SUBJECTS = [
     ("ITL704",   "Recent Open Source Project Lab",       (5,),      14),
 ]
 
-# Subjects only some students take: code -> share of the class (the rest of the class takes the other one).
+# Subjects only some students take. Real students are all in CSL; the dummies are split between CSL and DMMM.
 ELECTIVE_CODES = ("CSL", "DMMM")
-CSL_SHARE = 0.55
-REAL_ELECTIVES = ["CSL", "DMMM", "CSL"]   # real students in roll order get these (change in Manage Students)
+REAL_ELECTIVE = "CSL"
+CSL_SHARE = 0.5          # share of the DUMMY students that take CSL (the rest take DMMM)
 
 FIRST_NAMES = ["Aisha", "Rohan", "Priya", "Aman", "Sneha", "Vikram", "Neha", "Karan", "Divya", "Arjun",
                "Pooja", "Sahil", "Meera", "Yash", "Riya", "Tarun", "Anjali", "Rahul", "Simran", "Zoya",
@@ -73,7 +78,7 @@ FIRST_NAMES = ["Aisha", "Rohan", "Priya", "Aman", "Sneha", "Vikram", "Neha", "Ka
 LAST_NAMES = ["Verma", "Sharma", "Patel", "Singh", "Gupta", "Mehta", "Joshi", "Reddy", "Nair", "Chauhan",
               "Kapoor", "Bhatt", "Pillai", "Rao", "Shaikh", "Ansari", "Siddiqui", "Qureshi", "Deshmukh", "Khan"]
 
-ROLL_START = 231401   # dummy roll numbers look like the real ones (231413, 231422, 231425 ...)
+ROLL_START = 991001   # dummy roll numbers use a separate 99xxxx range, so they can never clash with real students added later (23xxxx)
 
 
 # ---------------------------------------------------------------- students
@@ -114,13 +119,15 @@ def make_students(real, old_labels):
         else:
             used_ids.add(label_id)
         email = old.get("email") or f"{name.split()[0].lower()}.{roll}.{BRANCH.lower()}@{config.COLLEGE_EMAIL_DOMAIN}"
-        electives = old.get("electives")
-        if electives is None:
-            electives = [_sid(REAL_ELECTIVES[len(labels) % len(REAL_ELECTIVES)])]
+        electives = old.get("electives") or [_sid(REAL_ELECTIVE)]
         labels[roll] = {"label_id": label_id, "name": old.get("name") or name,
                         "branch": BRANCH, "semester": SEMESTER, "email": email, "electives": electives}
 
     taken_names = {n.lower() for n in real.values()}
+    # shuffled CSL/DMMM list so the split is even (not left to chance) and the dummies are mixed up
+    dummy_electives = ["CSL"] * round(NUM_DUMMY * CSL_SHARE)
+    dummy_electives += ["DMMM"] * (NUM_DUMMY - len(dummy_electives))
+    random.shuffle(dummy_electives)
     roll_no = ROLL_START
     while len(labels) < len(real) + NUM_DUMMY:
         roll = str(roll_no)
@@ -134,7 +141,7 @@ def make_students(real, old_labels):
                 break
         labels[roll] = {"label_id": next_id(), "name": name, "branch": BRANCH, "semester": SEMESTER,
                         "email": f"{name.split()[0].lower()}.{roll}.{BRANCH.lower()}@{DUMMY_EMAIL_DOMAIN}",
-                        "electives": [_sid("CSL" if random.random() < CSL_SHARE else "DMMM")]}
+                        "electives": [_sid(dummy_electives.pop())], "demo": True}
     return labels
 
 
@@ -215,44 +222,22 @@ def make_history(labels, subjects, real, seed_real):
     return days
 
 
-def add_today_for_dummies():
-    """Dummy students' attendance for TODAY (real students are left out so the camera can mark them)."""
-    labels, subjects = storage.load_labels(), storage.load_subjects()
-    real = find_real_students()
-    dummies = [r for r in labels if r not in real and labels[r].get("branch") == BRANCH
-               and labels[r].get("semester") == SEMESTER]
-    if not dummies:
-        print("No dummy students found - run the full reset first.")
-        return
-    rate = {r: random.uniform(0.75, 0.95) for r in dummies}
-    today = datetime.now().date()
-    day_dir = os.path.join(config.ATTENDANCE_DIR, today.strftime("%Y-%m-%d"))
-    scheduled = [s for s in SUBJECTS if today.weekday() in s[2]] or SUBJECTS   # Sunday etc: every subject
-    for code, name, _days, hour in scheduled:
-        sid = storage.make_subject_id(BRANCH, SEMESTER, name)
-        if sid not in subjects:
-            continue
-        if os.path.exists(os.path.join(day_dir, f"{sid}.csv")):
-            print(f"  {code}: already has attendance today - skipped")
-            continue
-        attending = [r for r in dummies if code not in ELECTIVE_CODES or sid in labels[r].get("electives", [])]
-        _write_csv(day_dir, sid, _lecture_rows(attending, labels, rate, hour, code.startswith("ITL")))
-        print(f"  {code} {name}: dummy students filled in")
-    print("Now open Attendance in the app and let the camera mark the real students.")
-
-
 # ---------------------------------------------------------------- main
 
 def main():
     parser = argparse.ArgumentParser(description="Create real + dummy demo data (IT, Sem 7).")
-    parser.add_argument("--today", action="store_true", help="only add today's attendance for dummy students")
     parser.add_argument("--no-real-history", action="store_true",
                         help="don't seed past attendance for the real students")
+    parser.add_argument("--yes", "-y", action="store_true",
+                        help="don't ask before wiping existing attendance")
     args = parser.parse_args()
 
-    if args.today:
-        add_today_for_dummies()
-        return
+    if not args.yes and os.path.isdir(config.ATTENDANCE_DIR) and os.listdir(config.ATTENDANCE_DIR):
+        print("This will DELETE everything in attendance/ (including attendance taken with the camera) "
+              "and rebuild the demo data.")
+        if input("Type YES to continue: ").strip() != "YES":
+            print("Cancelled - nothing was changed.")
+            return
 
     real = find_real_students()
     old_labels = storage.load_labels()
@@ -276,14 +261,18 @@ def main():
     except Exception as e:   # e.g. opencv-contrib not installed on this machine
         trained = f"face model NOT retrained ({e}) - open the app once / re-run after installing opencv-contrib-python"
 
+    csl, dmmm = _sid("CSL"), _sid("DMMM")
     print(f"Real students kept   : {len(real)}  ({', '.join(f'{n} {r}' for r, n in real.items()) or 'none'})")
-    print(f"Dummy students added : {len(labels) - len(real)}")
+    print(f"Dummy students added : {len(labels) - len(real)}  (all {BRANCH} / Sem {SEMESTER}, e-mails @{DUMMY_EMAIL_DOMAIN} - never mailed)")
     print(f"Branch / semester    : {BRANCH} / Sem {SEMESTER}  |  subjects: {len(subjects)} (Mumbai University Rev-2019 'C')")
-    print(f"Electives            : CSL {sum(1 for v in labels.values() if _sid('CSL') in v['electives'])} students, DMMM {sum(1 for v in labels.values() if _sid('DMMM') in v['electives'])} students")
+    print(f"Electives            : CSL {sum(1 for v in labels.values() if csl in v['electives'])} students "
+          f"({sum(1 for r in real if csl in labels[r]['electives'])} real), "
+          f"DMMM {sum(1 for v in labels.values() if dmmm in v['electives'])} students "
+          f"({sum(1 for r in real if dmmm in labels[r]['electives'])} real)")
     print(f"Attendance history   : {days} class days (last {DAYS_OF_HISTORY} days, today left empty)")
     print(f"{trained}")
     print("\nDummy students have no face data - only the real ones are recognised by the camera.")
-    print("Tip: before the demo run  python generate_dummy_data.py --today  to fill today's dummy attendance.")
+    print("When you take real attendance and press Finalize, every student who was not scanned (= all dummies) is marked Absent.")
 
 
 if __name__ == "__main__":

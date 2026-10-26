@@ -10,7 +10,7 @@ import cv2
 import config
 from core import storage
 from core.camera import CameraStream, camera_message
-from core.recognition import face_cascade
+from core.recognition import face_cascade, rank_matches, pick_match, StreakTracker
 from core.email_service import send_lecture_emails
 from ui.widgets import make_header, make_table, VideoPanel, run_in_background
 
@@ -24,6 +24,7 @@ class AttendanceScreen(tb.Frame):
         self.marked_today = set()
         self.recognizer = None
         self.id_to_student = {}
+        self.streaks = StreakTracker()
         self.eligible_rolls = []
         self.subject_id = None
 
@@ -177,6 +178,7 @@ class AttendanceScreen(tb.Frame):
         self.recognizer = cv2.face.LBPHFaceRecognizer_create()
         self.recognizer.read(config.MODEL_FILE)
         self.marked_today = storage.load_marked_today(self.subject_id)
+        self.streaks.reset()
         self.reload_list()
 
         self.camera = CameraStream(config.STREAM_URL)
@@ -205,27 +207,45 @@ class AttendanceScreen(tb.Frame):
             faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(60, 60))
             today = datetime.now().strftime("%Y-%m-%d")
 
+            seen = {}      # roll_no -> name, for faces matched in THIS frame (this subject's students only)
+            drawn = []     # (x, y, w, h, roll_no or None, label, best, runner_up, in_subject)
             for (x, y, w, h) in faces:
                 face_img = cv2.resize(gray[y:y + h, x:x + w], (200, 200))
-                label_id, confidence = self.recognizer.predict(face_img)
-                name, color = "Unknown", (0, 0, 255)
-
-                if confidence < config.CONFIDENCE_THRESHOLD and label_id in self.id_to_student:
+                ranked = rank_matches(self.recognizer, face_img)
+                label_id, best, runner_up = pick_match(ranked)
+                if label_id is not None and label_id in self.id_to_student:
                     roll_no, name = self.id_to_student[label_id]
-                    if roll_no not in self.eligible_rolls:
-                        name = f"{name} (not in this subject)"
-                        color = (0, 165, 255)
-                    else:
-                        color = (0, 255, 0)
-                        if roll_no not in self.marked_today:
-                            storage.mark_present(today, self.subject_id, roll_no, self.id_to_student[label_id][1])
-                            self.marked_today.add(roll_no)
-                            self.tree.insert("", 0, values=(self.id_to_student[label_id][1], roll_no,
-                                                            datetime.now().strftime("%H:%M:%S")))
-                            self.count_label.config(text=f"Present: {len(self.tree.get_children())}")
+                    if roll_no in self.eligible_rolls:
+                        seen[roll_no] = name
+                        drawn.append((x, y, w, h, roll_no, name, best, runner_up, True))
+                    else:   # known face, but not a student of this subject (e.g. DMMM student in a CSL lecture)
+                        drawn.append((x, y, w, h, roll_no, f"{name} (not in this subject)", best, runner_up, False))
+                else:
+                    drawn.append((x, y, w, h, None, "Unknown", best, runner_up, False))
 
+            confirmed = self.streaks.update(set(seen))
+            for roll_no in confirmed:
+                if roll_no not in self.marked_today:
+                    name = seen[roll_no]
+                    storage.mark_present(today, self.subject_id, roll_no, name)
+                    self.marked_today.add(roll_no)
+                    self.tree.insert("", 0, values=(name, roll_no, datetime.now().strftime("%H:%M:%S")))
+                    self.count_label.config(text=f"Present: {len(self.tree.get_children())}")
+
+            for (x, y, w, h, roll_no, name, best, runner_up, in_subject) in drawn:
+                if roll_no is None:
+                    color = (0, 0, 255)          # red: unknown face
+                elif not in_subject:
+                    color = (0, 165, 255)        # orange: known, but not in this subject
+                elif roll_no in self.marked_today:
+                    color = (0, 255, 0)          # green: marked present
+                else:
+                    color = (0, 200, 255)        # yellow: recognised, confirming...
                 cv2.rectangle(display, (x, y), (x + w, y + h), color, 2)
-                cv2.putText(display, name, (x, max(y - 10, 15)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+                cv2.putText(display, name, (x, max(y - 10, 15)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                if config.SHOW_CONFIDENCE and best is not None:
+                    info = f"d={best:.0f}" + (f" next={runner_up:.0f}" if runner_up is not None else "")
+                    cv2.putText(display, info, (x, y + h + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
             self.video.show_frame(display)
             self.status_label.config(text="Live - scanning...")
@@ -259,8 +279,8 @@ class AttendanceScreen(tb.Frame):
         if not messagebox.askyesno(
                 "Finalize lecture?",
                 f"This will mark every student of this branch + semester who wasn't scanned for "
-                f"'{subject_name}' today as Absent, email each student their status, and lock this "
-                "lecture.\n\nAfter this, you will NOT be able to mark attendance again for this "
+                f"'{subject_name}' today as Absent, email each real student their status "
+                "(demo students are never emailed), and lock this lecture.\n\nAfter this, you will NOT be able to mark attendance again for this "
                 "subject today. Continue?"):
             return
 
@@ -288,8 +308,11 @@ class AttendanceScreen(tb.Frame):
         if "error" in res:
             messagebox.showerror("Email error", res["error"])
             return
-        sent, failures = res["value"]
-        msg = f"{absent_count} student(s) marked absent. This lecture is now locked.\nEmails sent: {sent}, failed: {len(failures)}."
+        sent, failures, skipped = res["value"]
+        msg = (f"{absent_count} student(s) marked absent. This lecture is now locked.\n"
+               f"Emails sent: {sent}, failed: {len(failures)}.")
+        if skipped:
+            msg += f"\n{skipped} demo student(s) skipped - no e-mail is sent to them."
         if failures:
             msg += "\n\nFailed:\n" + "\n".join(failures[:8])
             if len(failures) > 8:

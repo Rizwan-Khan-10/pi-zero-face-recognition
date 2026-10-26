@@ -35,8 +35,8 @@ Also in the folder (generated / local data):
 
 - **Only the IT branch** is set up, with **Semester 7 pre-selected** on every screen (`DEFAULT_BRANCHES` / `DEFAULT_SEMESTER` in `config.py`).
 - **Subjects are the University of Mumbai B.E. IT Semester VII (Rev-2019 'C' scheme)** courses: AI and DS - II (ITC701), Internet of Everything (ITC702), Software Testing and QA (ITDO7014, Dept. Optional-3), Information Retrieval System (IRS, Dept. Optional-4), the two Institute Optional-1 courses **Cyber Security and Laws (CSL)** and **Disaster Management and Mitigation Measures (DMMM)**, and the four labs ITL701-ITL704. Software Testing and QA is one common pick for Dept. Optional-3 — rename it in **Manage Subjects** if your batch has a different one.
-- **CSL / DMMM are electives**: each student attends only one of them. Pick it in **Add Student** (Elective box) or **Manage Students -> Edit**; the table there has an *Elective* column. Attendance, Finalize Day and all reports then count only the students of that subject (a DMMM student scanned during a CSL lecture is shown as "not in this subject" and not marked). A subject becomes an elective by having `"elective": true` in `subjects.json`.
-- **Real + dummy students run together** (see "Presentation / demo mode" below).
+- **CSL / DMMM are electives**: each student attends only one of them. Pick it in **Add Student** (Elective box) or **Manage Students -> Edit**; the table there has an *Elective* column. Attendance, Finalize and all reports then count only the students of that subject (a student scanned during a lecture of the other elective is boxed orange as "not in this subject" and not marked). A subject becomes an elective by having `"elective": true` in `subjects.json`.
+- **Real + dummy students run together**, all IT Sem 7; dummies are never e-mailed and are marked Absent when real attendance is finalized (see "Presentation / demo mode" below).
 - **New Attendance Report** with a live *Minimum attendance %* box (see "Attendance report" below).
 
 ---
@@ -62,19 +62,20 @@ Open **View Report**. The top bar has Branch / Semester / Subject (default: IT, 
 `generate_dummy_data.py` builds a demo class so the report looks like a real class while the camera still works on the real students:
 
 ```
-python generate_dummy_data.py            # full reset
-python generate_dummy_data.py --today    # add TODAY's attendance for the dummy students
-python generate_dummy_data.py --no-real-history
+python generate_dummy_data.py                    # full reset (asks before wiping attendance/)
+python generate_dummy_data.py --yes              # same, without asking
+python generate_dummy_data.py --no-real-history  # real students get no seeded history
 ```
 
-- **Real students** = everyone who has a face folder in `dataset/<roll>_<Name>/` (currently 231413 Abdullah Ghawte, 231422 Izhar Khan, 231425 Rizwan Khan). They are kept in IT / Sem 7 and the face model is retrained, so the camera recognises them.
-- **Electives**: the real students are split over CSL / DMMM as 231413 CSL, 231422 DMMM, 231425 CSL (change it in Manage Students). The dummy students are split roughly 55% CSL / 45% DMMM.
-- **Dummy students** (40, roll numbers 231401 onwards) have no face data — they only appear in lists and reports. Their e-mails use the reserved `@demo.invalid` domain, so lecture e-mails can never reach a real inbox.
+- **Everything is IT / Sem 7.** All students - real and dummy - belong to IT, semester 7. No other branch or semester data exists.
+- **Real students** = everyone who has a face folder in `dataset/<roll>_<Name>/` (currently 231413 Abdullah Ghawte, 231422 Izhar Khan, 231425 Rizwan Khan). The face model is retrained, so the camera recognises them.
+- **Electives**: the 3 real students are all in **CSL**. The 40 dummy students are split evenly - 20 in CSL and 20 in DMMM (so CSL has 23 students, DMMM 20). Change anyone in Manage Students.
+- **Dummy students** (40, roll numbers 991001 onwards, a separate range so they never clash with real students you add later) have no face data - they only appear in lists and reports. They are flagged `"demo": true` in `labels.json`.
+- **Dummy students are never e-mailed.** Their addresses use the reserved `@demo.invalid` domain (`.invalid` can never exist on the internet), **and** the e-mail code skips every demo student on top of that, so even if someone edits a dummy's address nothing is sent. After Finalize the app shows how many demo students were skipped.
 - About 90 days of seeded attendance history is written (timetable based; Sundays and a few random holidays skipped). A few dummy students are clearly below 75% and a few sit just around it, so changing the minimum live in the report visibly moves people between green and red. **Today is left empty.**
-- The real students also get seeded history (high attendance) so they show up next to the dummies. This is demo data only — use `--no-real-history` to leave them without any.
-- **Suggested flow on presentation day:** run `python generate_dummy_data.py` once (moves the history up to yesterday), then `python generate_dummy_data.py --today`, open **Start Attendance** and let the camera mark the real students live, press **Finalize Day**, then open **View Report**.
-- Running the full reset again wipes `attendance/` and rebuilds the student list from `dataset/`. Students added with **Add Student** are treated as real as long as their face folder exists.
-- Without `--today`, **Finalize Day** marks every dummy student Absent (they cannot be scanned) — that is expected.
+- The real students also get seeded history (high attendance) so they show up next to the dummies. This is demo data only - use `--no-real-history` to leave them without any.
+- **Taking real attendance later:** open **Start Attendance**, pick the subject, let the camera mark the real students, then press **Finalize**. Every student who was not scanned - i.e. **all the dummy students** - is marked **Absent** automatically for that lecture, and only the real students get an e-mail. The same happens when you add a new real student with **Add Student**: the dummies simply stay absent. There is nothing else to run.
+- Do **not** re-run the full reset after you have taken real attendance: it wipes `attendance/` and rebuilds the list from `dataset/` (it asks you to type YES first). Students added with **Add Student** are treated as real as long as their face folder exists.
 
 ---
 
@@ -196,8 +197,8 @@ If it still disconnects, use a **powered USB hub** (one with its own separate po
 ## Usage
 
 - **Add Student** — enter name, roll number, branch (IT) and semester (7 is pre-selected), click "Start Capturing." The camera captures 25 face samples, trains the model, and closes automatically.
-- **Start Attendance** — pick branch / semester / subject, click "Start." Recognized faces are boxed in green with their name and marked "Present" once per day per subject. Unrecognized faces show a red box labeled "Unknown."
-- **Finalize Day (Mark Absentees)** — on the Attendance screen. Marks every registered student of that branch + semester who wasn't scanned as "Absent". Do it once, at the end of the lecture.
+- **Start Attendance** — pick branch / semester / subject, click "Start." Recognized faces are boxed with their name and marked "Present" once per day per subject (yellow while confirming, green once marked, orange if the student isn't in that subject). Unrecognized faces show a red box labeled "Unknown."
+- **Finalize Lecture (Mark Absentees + Email)** — on the Attendance screen. Marks every student of that subject who wasn't scanned as "Absent" (this includes the dummy students), e-mails the real students their status (never the dummies) and locks the lecture. Do it once, at the end of the lecture.
 - **Manage Students / Branches / Subjects** — edit or remove students, add branches, add or remove subjects.
 - **View Report** — see "Attendance report" above.
 
@@ -216,5 +217,5 @@ If it still disconnects, use a **powered USB hub** (one with its own separate po
 | `Failed building wheel for dlib` | Not applicable here — this project deliberately avoids `dlib`/`face_recognition` | Use `requirements.txt` as-is (OpenCV LBPH) |
 | Pi not visible on network | Wrong WiFi band (5GHz) or wrong SSID/password | Reflash with correct 2.4GHz network details |
 | Real student not recognised after running `generate_dummy_data.py` | Model not retrained (OpenCV contrib missing at that moment) | Install `opencv-contrib-python`, run the script again |
-| Report shows no students / no data | Wrong branch + semester picked, or `attendance/` is empty | Pick IT / 7, or run `generate_dummy_data.py` |
+| Report shows no students / no data | Wrong branch + semester picked, or `attendance/` is empty | Pick IT / 7, or run `generate_dummy_data.py` (wipes attendance/) |
 | Everything is red (or nothing is) in the report | Minimum attendance box is set very high / low | Press **Reset** next to the box (back to 75) |
